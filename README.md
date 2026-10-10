@@ -1,16 +1,46 @@
-# React + Vite
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+# NutriSnap — AI Food Nutrition Assistant
 
-Currently, two official plugins are available:
+**Capture Your Meal. Discover Its Nutrition.**
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+NutriSnap is a food nutrition assistant project designed to help users explore food images and understand their nutritional information.
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Upload and preview a food image
+- Interactive food analysis interface
+- Nutrition results interface under development
+- Planned AI-based food recognition and nutrition lookup
 
-## Expanding the ESLint configuration
+## Technology Stack
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+- React
+- Vite
+- JavaScript
+- CSS
+
+## Project Status
+
+The frontend is under development. Food image recognition and nutrition calculations are not connected yet. Current analysis output is for demonstration only.
+
+## Run Locally
+
+Install Node.js, then run these commands from the project directory:
+
+```bash
+npm install
+npm run dev
+```
+
+Open the local URL shown in your terminal.
+
+## Future Improvements
+
+- Connect an AI food classification model
+- Integrate a nutrition database
+- Display calories, protein, carbohydrates, and fats
+- Add serving-size selection and food correction
+
+## Disclaimer
+
+Nutrition estimates may vary based on ingredients and serving sizes. This project is for informational purposes and is not a substitute for professional medical advice.

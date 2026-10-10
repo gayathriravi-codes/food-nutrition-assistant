@@ -1,207 +1,139 @@
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import './App.css'
-import { Pie } from 'react-chartjs-2'
-import {
-  Chart as ChartJS,
-  ArcElement,
-  Tooltip,
-  Legend
-} from 'chart.js'
 
-ChartJS.register(ArcElement, Tooltip, Legend)
+const API_URL = 'http://127.0.0.1:8000'
 
 function App() {
   const [image, setImage] = useState(null)
+  const [selectedFile, setSelectedFile] = useState(null)
   const [foodName, setFoodName] = useState('')
+  const [confidence, setConfidence] = useState(null)
+  const [topPredictions, setTopPredictions] = useState([])
+  const [nutrition, setNutrition] = useState(null)
   const [analyzed, setAnalyzed] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
-  const [nutrition, setNutrition] = useState(null)
-  const [error, setError] = useState('')
-
-  const analysisTimer = useRef(null)
-  const analyzingLock = useRef(false)
+  const [predictionStatus, setPredictionStatus] = useState('')
+  const [height, setHeight] = useState('')
+  const [weight, setWeight] = useState('')
+  const [bmi, setBmi] = useState(null)
 
   useEffect(() => {
     return () => {
       if (image) URL.revokeObjectURL(image)
-
-      if (analysisTimer.current !== null) {
-        clearTimeout(analysisTimer.current)
-      }
     }
   }, [image])
 
-  const nutritionChartData = {
-    labels: ['Protein', 'Carbohydrates', 'Fat'],
-    datasets: [{
-      label: 'Amount in grams',
-      data: [
-        nutrition?.protein ?? 8,
-        nutrition?.carbohydrates ?? 35,
-        nutrition?.fat ?? 9
-      ],
-      backgroundColor: ['#3B82F6', '#F59E0B', '#8B5CF6'],
-      borderColor: '#FFFFFF',
-      borderWidth: 3,
-      hoverOffset: 8
-    }]
-  }
-
-  const nutritionChartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'bottom',
-        labels: {
-          padding: 20,
-          usePointStyle: true
-        }
-      },
-      tooltip: {
-        callbacks: {
-          label: (context) => `${context.label}: ${context.raw} g`
-        }
-      }
-    }
+  function resetResults() {
+    setFoodName('')
+    setConfidence(null)
+    setTopPredictions([])
+    setNutrition(null)
+    setAnalyzed(false)
+    setPredictionStatus('')
   }
 
   function handleImageUpload(event) {
     const file = event.target.files?.[0]
     if (!file) return
 
-    const allowedTypes = [
-      'image/jpeg',
-      'image/png',
-      'image/webp'
-    ]
-
-    const maxSize = 10 * 1024 * 1024
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp']
 
     if (!allowedTypes.includes(file.type)) {
-      setError('Please upload a JPG, PNG, or WEBP image.')
+      setPredictionStatus('Please upload a JPG, PNG, or WEBP image.')
       event.target.value = ''
       return
     }
 
-    if (file.size > maxSize) {
-      setError('Your image is too large. Please choose an image under 10 MB.')
+    if (file.size > 10 * 1024 * 1024) {
+      setPredictionStatus('Please choose an image under 10 MB.')
       event.target.value = ''
       return
     }
-
-    if (image) URL.revokeObjectURL(image)
 
     setImage(URL.createObjectURL(file))
-    setFoodName('')
-    setAnalyzed(false)
-    setIsAnalyzing(false)
-    setNutrition(null)
-    setError('')
+    setSelectedFile(file)
+    resetResults()
   }
 
-  function analyzeFood() {
-    if (
-      !image ||
-      analyzingLock.current ||
-      analysisTimer.current !== null
-    ) {
+  async function analyzeFood() {
+    if (!selectedFile) {
+      setPredictionStatus('Please upload a food image first.')
       return
     }
 
-    analyzingLock.current = true
     setIsAnalyzing(true)
-    setAnalyzed(false)
-    setNutrition(null)
-    setError('')
+    resetResults()
 
-    // Demo only: the real AI model is not connected yet.
-    analysisTimer.current = setTimeout(() => {
-      setFoodName('Demo Food — AI recognition is not connected')
+    try {
+      const formData = new FormData()
+      formData.append('file', selectedFile)
 
-      setNutrition({
-        calories: 250,
-        protein: 8,
-        carbohydrates: 35,
-        fat: 9,
-        fiber: 4,
-        servingSize: '100 g'
+      const response = await fetch(`${API_URL}/predict`, {
+        method: 'POST',
+        body: formData,
       })
 
-      setAnalyzed(true)
-      setIsAnalyzing(false)
+      const result = await response.json()
 
-      analysisTimer.current = null
-      analyzingLock.current = false
-    }, 3000)
+      if (!response.ok) {
+        throw new Error(result.detail || 'Food prediction failed.')
+      }
+
+      setFoodName(result.predicted_class)
+      setConfidence(result.confidence)
+      setTopPredictions(result.top_predictions || [])
+
+      // Retrieve nutrition information for the predicted food.
+      try {
+        const nutritionResponse = await fetch(
+          `${API_URL}/nutrition/${encodeURIComponent(result.predicted_class)}`
+        )
+
+        if (nutritionResponse.ok) {
+          const nutritionResult = await nutritionResponse.json()
+          setNutrition(nutritionResult)
+        } else {
+          setNutrition({ available: false })
+        }
+      } catch {
+        setNutrition({ available: false })
+      }
+
+      setAnalyzed(true)
+    } catch (error) {
+      setPredictionStatus(
+        error.message || 'Could not connect to the NutriSnap API.'
+      )
+    } finally {
+      setIsAnalyzing(false)
+    }
   }
 
   function changePhoto() {
-    if (analysisTimer.current !== null) {
-      clearTimeout(analysisTimer.current)
-      analysisTimer.current = null
-    }
-
-    analyzingLock.current = false
     setImage(null)
-    setFoodName('')
-    setAnalyzed(false)
-    setIsAnalyzing(false)
-    setNutrition(null)
-    setError('')
+    setSelectedFile(null)
+    resetResults()
   }
 
-  function downloadNutritionReport() {
-    if (!nutrition || !analyzed) return
+  function calculateBMI() {
+    const heightInMeters = Number(height) / 100
+    const weightInKg = Number(weight)
 
-    const report = `
-NUTRISNAP — NUTRITION REPORT
-Capture Your Meal. Discover Its Nutrition.
-===========================================
+    if (
+      !height ||
+      !weight ||
+      !Number.isFinite(heightInMeters) ||
+      !Number.isFinite(weightInKg) ||
+      heightInMeters <= 0 ||
+      weightInKg <= 0
+    ) {
+      setBmi(null)
+      alert('Please enter a valid height in centimetres and weight in kilograms.')
+      return
+    }
 
-Food: ${foodName}
-Serving Size: ${nutrition.servingSize}
-
-NUTRITION INFORMATION
-Calories: ${nutrition.calories} kcal
-Protein: ${nutrition.protein} g
-Carbohydrates: ${nutrition.carbohydrates} g
-Fat: ${nutrition.fat} g
-Fiber: ${nutrition.fiber} g
-
-MACRONUTRIENT INFORMATION
-Protein supports growth and tissue repair.
-Carbohydrates provide energy.
-Fats support normal body functions.
-Fiber supports digestive health.
-
-IMPORTANT NOTICE
-These are illustrative demo values, not verified food measurements.
-Actual nutrition depends on ingredients and portion size.
-AI food recognition is not connected yet.
-
-===========================================
-Generated by NutriSnap
-Informational use only — Not medical advice
-`
-
-    const blob = new Blob([report], {
-      type: 'text/plain;charset=utf-8'
-    })
-
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-
-    link.href = url
-    link.download = 'NutriSnap-Nutrition-Report.txt'
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-
-    window.setTimeout(() => {
-      URL.revokeObjectURL(url)
-    }, 1000)
+    setBmi((weightInKg / (heightInMeters * heightInMeters)).toFixed(1))
   }
 
   return (
@@ -211,31 +143,26 @@ Informational use only — Not medical advice
           <span className="brand-icon">N</span>
           NutriSnap
         </a>
-
-        <span className="nav-label">
-          AI FOOD NUTRITION ASSISTANT
-        </span>
+        <span className="nav-label">AI FOOD NUTRITION ASSISTANT</span>
       </header>
 
       <main className="hero">
         <div className="hero-copy">
-          <span className="eyebrow">
-            ✦ YOUR PERSONAL FOOD COMPANION
-          </span>
+          <span className="eyebrow">✦ YOUR PERSONAL FOOD COMPANION</span>
 
           <h1>
             Every meal has a story. <span>Discover yours.</span>
           </h1>
 
           <p className="subtitle">
-            Capture your meal. Discover its nutrition. Make more informed
-            food choices, one plate at a time.
+            Capture your meal. Discover its food category. Explore estimated
+            nutrition information and make informed food choices.
           </p>
 
           <div className="benefits">
             <div><span>✓</span> Food image preview</div>
-            <div><span>✓</span> Nutrition insights</div>
-            <div><span>✓</span> Simple, clear information</div>
+            <div><span>✓</span> AI food recognition</div>
+            <div><span>✓</span> Nutrition estimates</div>
           </div>
         </div>
 
@@ -253,15 +180,13 @@ Informational use only — Not medical advice
               <img
                 className="food-preview"
                 src={image}
-                alt="Uploaded meal preview"
+                alt="Uploaded food"
               />
             ) : (
               <>
                 <span className="upload-icon">↑</span>
-                <strong>Choose your food photo</strong>
-                <span className="upload-instruction">
-                  Click to upload your food image
-                </span>
+                <strong>Drop your food photo here</strong>
+                <span>or click to browse your device</span>
                 <small>JPG, PNG or WEBP · Maximum 10 MB</small>
               </>
             )}
@@ -273,12 +198,6 @@ Informational use only — Not medical advice
             />
           </label>
 
-          {error && (
-            <p className="error-message" role="alert">
-              {error}
-            </p>
-          )}
-
           {image && (
             <div className="actions">
               <button
@@ -287,18 +206,7 @@ Informational use only — Not medical advice
                 onClick={analyzeFood}
                 disabled={isAnalyzing}
               >
-                {isAnalyzing && (
-                  <span
-                    className="loading-spinner"
-                    aria-hidden="true"
-                  />
-                )}
-
-                {isAnalyzing
-                  ? 'Analyzing your meal...'
-                  : analyzed
-                    ? 'Analyze Again'
-                    : 'Analyze Food'}
+                {isAnalyzing ? 'Analyzing...' : 'Analyze Food'}
               </button>
 
               <button
@@ -312,123 +220,91 @@ Informational use only — Not medical advice
             </div>
           )}
 
-          {analyzed && nutrition && (
+          {predictionStatus && (
+            <p role="alert" className="status-message">
+              {predictionStatus}
+            </p>
+          )}
+
+          {analyzed && (
             <div className="prediction-result">
-              <h3>Your Nutrition Report</h3>
-              <p>{foodName}</p>
+              <h3>Food Recognition Result</h3>
 
-              <button
-                type="button"
-                className="analyze-button"
-                onClick={downloadNutritionReport}
-              >
-                📥 Download Nutrition Report
-              </button>
-
-              <p className="demo-notice">
-                <strong>Prototype preview:</strong> This report uses
-                sample nutrition values. Real food recognition requires
-                the AI model and backend to be connected.
+              <p>
+                <strong>Predicted food:</strong> {foodName}
               </p>
 
-              <section className="nutrition-dashboard">
-                <div className="dashboard-heading">
-                  <span className="eyebrow">
-                    YOUR MEAL AT A GLANCE
-                  </span>
-                  <h2>Your Nutrition Report</h2>
-                  <p>Understand what your meal provides.</p>
-                </div>
+              <p>
+                <strong>Model confidence:</strong>{' '}
+                {typeof confidence === 'number'
+                  ? `${(confidence * 100).toFixed(2)}%`
+                  : 'Unavailable'}
+              </p>
 
-                <div className="nutrition-summary">
-                  <div className="summary-card calories-card">
-                    <span className="summary-icon">🔥</span>
-                    <span className="summary-label">Calories</span>
-                    <strong>{nutrition.calories}</strong>
-                    <small>kcal per serving</small>
+              <p>
+                This is an AI prediction, not a confirmed identification.
+                Lower confidence means the prediction is more uncertain.
+              </p>
+
+              {topPredictions.length > 0 && (
+                <>
+                  <h3>Top Predictions</h3>
+                  <div className="nutrition-grid">
+                    {topPredictions.map((item) => (
+                      <div className="nutrition-card" key={item.class_name}>
+                        <span>{item.class_name}</span>
+                        <h3>{(item.confidence * 100).toFixed(2)}%</h3>
+                        <small>Model confidence</small>
+                      </div>
+                    ))}
                   </div>
+                </>
+              )}
 
-                  <div className="summary-card protein-card">
-                    <span className="summary-icon">💪</span>
-                    <span className="summary-label">Protein</span>
-                    <strong>{nutrition.protein} g</strong>
-                    <small>per serving</small>
-                  </div>
+              <section className="nutrition-result">
+                <h3>Estimated Nutrition</h3>
 
-                  <div className="summary-card carbs-card">
-                    <span className="summary-icon">🌾</span>
-                    <span className="summary-label">Carbohydrates</span>
-                    <strong>{nutrition.carbohydrates} g</strong>
-                    <small>per serving</small>
-                  </div>
+                {nutrition === null ? (
+                  <p>Loading nutrition information...</p>
+                ) : nutrition.available ? (
+                  <>
+                    <p>
+                      <strong>Food:</strong> {nutrition.food_name}
+                    </p>
+                    <p>
+                      <strong>Serving size:</strong> {nutrition.serving}
+                    </p>
 
-                  <div className="summary-card fat-card">
-                    <span className="summary-icon">🥑</span>
-                    <span className="summary-label">Fat</span>
-                    <strong>{nutrition.fat} g</strong>
-                    <small>per serving</small>
-                  </div>
-                </div>
+                    <div className="nutrition-grid">
+                      <div className="nutrition-card">
+                        <span>Calories</span>
+                        <h3>{nutrition.calories} kcal</h3>
+                      </div>
 
-                <div className="nutrition-chart-card">
-                  <div className="chart-heading">
-                    <div>
-                      <h3>Macronutrient Breakdown</h3>
-                      <p>
-                        Compare protein, carbohydrates and fat by weight.
-                      </p>
+                      <div className="nutrition-card">
+                        <span>Protein</span>
+                        <h3>{nutrition.protein_g} g</h3>
+                      </div>
+
+                      <div className="nutrition-card">
+                        <span>Carbohydrates</span>
+                        <h3>{nutrition.carbs_g} g</h3>
+                      </div>
+
+                      <div className="nutrition-card">
+                        <span>Fat</span>
+                        <h3>{nutrition.fat_g} g</h3>
+                      </div>
                     </div>
-                    <span className="chart-badge">Pie chart</span>
-                  </div>
 
-                  <div className="nutrition-pie-chart">
-                    <Pie
-                      data={nutritionChartData}
-                      options={nutritionChartOptions}
-                    />
-                  </div>
-
-                  <p className="chart-explanation">
-                    Each slice represents the relative amount in grams,
-                    not calories or daily targets.
-                  </p>
-                </div>
-
-                <div className="nutrition-details">
-                  <h3>More nutrition details</h3>
-
-                  <div className="detail-row">
-                    <span>🌱 Fiber</span>
-                    <strong>{nutrition.fiber} g</strong>
-                  </div>
-
-                  <div className="detail-row">
-                    <span>🍽️ Serving size</span>
-                    <strong>{nutrition.servingSize}</strong>
-                  </div>
-                </div>
-
-                <div className="nutrition-connection">
-                  <h3>Understanding Your Meal</h3>
-
+                    <p className="nutrition-note">{nutrition.note}</p>
+                  </>
+                ) : (
                   <p>
-                    <strong>Protein</strong> supports growth and tissue repair.
-                    <strong> Carbohydrates</strong> provide energy.
-                    <strong> Fats</strong> support normal body functions, and
-                    <strong> fiber</strong> supports digestive health.
+                    Nutrition information is not available for {foodName} yet.
+                    You can still use the food recognition result.
                   </p>
-
-                  <p>
-                    A single meal is only one part of an overall eating
-                    pattern. Actual nutrition depends on ingredients and
-                    portion size.
-                  </p>
-                </div>
-
-                <p className="dashboard-disclaimer">
-                  Illustrative demo data only. AI food recognition and
-                  verified nutrition data are not connected yet.
-                </p>
+                )}
               </section>
             </div>
           )}
@@ -438,11 +314,62 @@ Informational use only — Not medical advice
           </p>
 
           <div className="notice">
-            <strong>Nutrition estimates are approximate.</strong>
+            <strong>Informational estimates only</strong>
             <span>
-              Actual nutrition depends on ingredients and serving size.
+              Food recognition cannot measure calories or nutrients from an
+              image. Nutrition values depend on ingredients, serving size,
+              recipe, and preparation.
             </span>
           </div>
+
+          <section className="bmi-section">
+            <h3>Optional BMI Calculator</h3>
+            <p>Enter height in centimetres and weight in kilograms.</p>
+
+            <div className="bmi-inputs">
+              <label>
+                Height (cm)
+                <input
+                  type="number"
+                  min="1"
+                  value={height}
+                  onChange={(event) => setHeight(event.target.value)}
+                  placeholder="e.g. 165"
+                />
+              </label>
+
+              <label>
+                Weight (kg)
+                <input
+                  type="number"
+                  min="1"
+                  value={weight}
+                  onChange={(event) => setWeight(event.target.value)}
+                  placeholder="e.g. 60"
+                />
+              </label>
+            </div>
+
+            <button
+              type="button"
+              className="analyze-button"
+              onClick={calculateBMI}
+            >
+              Calculate BMI
+            </button>
+
+            {bmi !== null && (
+              <p>
+                <strong>BMI calculation:</strong> {bmi}
+              </p>
+            )}
+
+            <p className="nutrition-note">
+              BMI is a limited screening measure, not a diagnosis. For people
+              under 18, interpretation requires age- and sex-specific growth
+              charts; this calculator does not provide that interpretation.
+            </p>
+          </section>
         </section>
       </main>
 
